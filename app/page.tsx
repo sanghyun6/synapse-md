@@ -434,7 +434,7 @@ function ConfidenceRing({ value }: { value: number }) {
   );
 }
 
-function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, skillImproved, wikiAnswer, apiWikiState }: {
+function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, skillImproved, wikiAnswer, apiWikiState, onPublish, publishState, toast }: {
   wikiState: WikiState;
   hasResult: boolean;
   wikiSummary: string;
@@ -443,6 +443,9 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
   skillImproved: boolean;
   wikiAnswer: string;
   apiWikiState: ApiWikiState | null;
+  onPublish: () => void;
+  publishState: "idle" | "publishing" | "published";
+  toast: string | null;
 }) {
   const conf = apiWikiState?.confidence ?? wikiState.confidence;
   const version = apiWikiState ? 17 + apiWikiState.skill_version : wikiState.version;
@@ -599,8 +602,36 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
 
         </div>
 
+        {toast && (
+          <div style={{
+            margin: "0 14px 8px",
+            padding: "8px 12px",
+            background: "oklch(0.25 0.08 155 / 0.9)",
+            border: "1px solid oklch(0.55 0.13 155 / 0.6)",
+            borderRadius: 6,
+            fontSize: 11,
+            color: "var(--green)",
+            fontFamily: "var(--mono)",
+            letterSpacing: "0.04em",
+            lineHeight: 1.5,
+          }}>
+            {toast}
+          </div>
+        )}
         <div className="footer-actions">
-          <button className="fbtn primary">Publish v{version}</button>
+          <button
+            className="fbtn primary"
+            onClick={onPublish}
+            disabled={publishState !== "idle"}
+            style={publishState === "published" ? {
+              background: "linear-gradient(180deg, oklch(0.55 0.13 155), oklch(0.45 0.14 155))",
+              borderColor: "oklch(0.55 0.13 155 / 0.6)",
+            } : undefined}
+          >
+            {publishState === "publishing" ? "Publishing…" :
+             publishState === "published" ? "Published ✓" :
+             `Publish v${version}`}
+          </button>
         </div>
       </div>
     </div>
@@ -626,6 +657,8 @@ export default function App() {
   const [queryRunning, setQueryRunning] = useState(false);
   const [wikiAnswer, setWikiAnswer] = useState("");
   const [apiWikiState, setApiWikiState] = useState<ApiWikiState | null>(null);
+  const [publishState, setPublishState] = useState<"idle" | "publishing" | "published">("idle");
+  const [toast, setToast] = useState<string | null>(null);
   const runCountRef = useRef(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -651,6 +684,24 @@ export default function App() {
       setQueryRunning(false);
     }
   }, [wikiQuery, queryRunning]);
+
+  const handlePublish = useCallback(async () => {
+    if (publishState !== "idle") return;
+    setPublishState("publishing");
+    try {
+      const data = await fetch("http://localhost:8000/publish-wiki", {
+        method: "POST",
+      }).then(r => r.json());
+      setPublishState("published");
+      setToast(`Wiki v${data.version} distilled to permanent memory. Session cleaned.`);
+      setTimeout(() => {
+        setPublishState("idle");
+        setToast(null);
+      }, 3000);
+    } catch {
+      setPublishState("idle");
+    }
+  }, [publishState]);
 
   const submit = useCallback(async () => {
     if (running) return;
@@ -775,7 +826,7 @@ export default function App() {
       <div className="main">
         <LeftPanel onSubmit={submit} running={running} notes={notes} setNotes={setNotes} wikiQuery={wikiQuery} setWikiQuery={setWikiQuery} onQuery={queryWiki} queryRunning={queryRunning} />
         <CenterPanel messages={messages} streaming={streaming} running={running} activeAgent={activeAgent} />
-        <RightPanel wikiState={wikiState} hasResult={hasResult} wikiSummary={wikiSummary} alertActive={alertActive} runCount={runCount} skillImproved={skillImproved} wikiAnswer={wikiAnswer} apiWikiState={apiWikiState} />
+        <RightPanel wikiState={wikiState} hasResult={hasResult} wikiSummary={wikiSummary} alertActive={alertActive} runCount={runCount} skillImproved={skillImproved} wikiAnswer={wikiAnswer} apiWikiState={apiWikiState} onPublish={handlePublish} publishState={publishState} toast={toast} />
       </div>
     </div>
   );

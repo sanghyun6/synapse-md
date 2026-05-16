@@ -147,6 +147,33 @@ async def analyze(req: AnalyzeRequest):
     }
 
 
+@app.post("/publish-wiki")
+async def publish_wiki():
+    try:
+        skill_content = _SKILL_PATH.read_text()
+    except Exception:
+        skill_content = wiki_state.get("current_skill", "")
+
+    await cognee.remember(skill_content, dataset_name="medical-wiki")
+
+    session_cleaned = False
+    try:
+        await cognee.forget(dataset="demo-session")
+        session_cleaned = True
+    except Exception:
+        pass
+
+    wiki_state["publish_count"] = wiki_state.get("publish_count", 0) + 1
+    version = wiki_state["skill_version"]
+
+    return {
+        "published": True,
+        "version": version,
+        "distilled_to": "permanent_graph",
+        "session_cleaned": session_cleaned,
+    }
+
+
 @app.post("/query-wiki")
 async def query_wiki(req: QueryRequest):
     try:
@@ -156,10 +183,29 @@ async def query_wiki(req: QueryRequest):
             for r in results
             if getattr(r, "text", None) or getattr(r, "answer", None)
         ]
-        if texts:
-            answer = " ".join(texts)
-        else:
-            answer = "No relevant entries found yet. Run a multi-agent review first to populate the knowledge graph."
+        if not texts:
+            return {"answer": "No relevant entries found yet. Run a multi-agent review first to populate the knowledge graph."}
+
+        context = " ".join(texts)
+        client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a medical wiki assistant. "
+                        "Answer the question based on the knowledge provided. "
+                        "Be concise and specific. Max 3 sentences."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Question: {req.question}\nKnowledge: {context}",
+                },
+            ],
+        )
+        answer = response.choices[0].message.content.strip()
     except Exception:
         answer = "Wiki query unavailable. Run a multi-agent review first to build the knowledge graph."
     return {"answer": answer}
@@ -319,8 +365,8 @@ async def debate(req: DebateRequest):
                 "confidence":         wiki_state["confidence"],
                 "confidence_history": wiki_state["confidence_history"],
                 "skill_version":      wiki_state["skill_version"],
-                "skill_before":       wiki_state["baseline_skill"][:200],
-                "skill_after":        wiki_state["current_skill"][:200],
+                "skill_before":       wiki_state["baseline_skill"][:500],
+                "skill_after":        wiki_state["current_skill"][:500],
             },
             "status":        "complete",
         }

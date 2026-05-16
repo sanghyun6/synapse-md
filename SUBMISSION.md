@@ -55,21 +55,60 @@ with every case accumulated.
 - Score: 0.3 (ophthalmology referral missing)
 - Recorded feedback: SkillRunEntry(success_score=0.3, feedback=-1.0)
 
-SKILL.md Before:
-"Patients with Type 2 Diabetes require regular monitoring.
-Vision complaints should be noted."
+SKILL.md Before (git: c056664):
+```
+description: Detect diabetic retinopathy risk in patient charts and recommend
+ophthalmology referrals, prioritizing urgent evaluations for acute vision changes.
+allowed-tools: memory_search
+
+Current rules:
+- Patients with Type 2 Diabetes require regular monitoring, with HbA1c levels
+  considered for risk assessment.
+- Sudden vision changes, such as blurriness and floaters, must trigger an
+  immediate referral to ophthalmology for evaluation of potential diabetic
+  retinopathy and other acute conditions.
+- Document and flag any missed referrals or treatments based on the urgency of
+  vision symptoms and diabetes management protocols.
+```
 
 ### Improved Run
 
-- Query: Same patient notes (second run)
-- Result: Specific ADA 2024 referral protocol triggered
-- Score: 0.3 → improvement triggered
-- What changed: SKILL.md rewritten with HbA1c thresholds
+- Query: Same patient notes (subsequent runs)
+- Result: Specific referral criteria, HbA1c thresholds, differential diagnosis
+  requirements, and annual exam mandates added
+- Score: 0.3 → improvement triggered on every linter alert
+- What changed: SKILL.md rewritten with 9 specific rules across 6 agent runs
 
-SKILL.md After:
-"HbA1c >10% + vision symptoms → immediate ophthalmology
-referral required per ADA 2024 §4.2. Annual eye exam
-mandatory for DM2 patients with >5yr duration."
+SKILL.md After (current — auto-evolved):
+```
+description: Detect diabetic retinopathy risk in patient charts and recommend
+timely ophthalmology referrals, prioritizing urgent evaluations for acute vision
+changes and considering alternative causes for vision symptoms, while ensuring
+comprehensive diabetes management is addressed, including evaluation of other
+potential systemic conditions.
+allowed-tools: memory_search
+
+Current rules:
+- Patients with Type 2 Diabetes require regular monitoring, with HbA1c levels
+  considered for risk assessment. An HbA1c above 9% necessitates urgent
+  evaluation and potential adjustment of diabetes management plans. With HbA1c
+  levels above 11%, immediate action is critical.
+- Sudden vision changes, such as blurriness and floaters, must trigger an
+  **immediate referral to ophthalmology** for evaluation of potential diabetic
+  retinopathy and other acute conditions, including retinal detachment and
+  vitreous hemorrhage. This referral should **not be delayed**.
+- Conduct a differential diagnosis to rule out alternative causes of vision blur,
+  with particular emphasis on retinal vein occlusion, vitreous hemorrhage, and
+  retinal detachment, especially when sudden symptoms present.
+- Incorporate the need for a **comprehensive eye examination** for patients with
+  blurred vision, especially those with HbA1c levels above 9%.
+- Recommend follow-up eye exams annually for all patients with diabetes.
+- Double-check for the absence of prior ophthalmology referrals, as this poses a
+  significant safety concern that must be addressed immediately.
+
+Safety alert raised: True
+Score: 0.3
+```
 
 ## Architecture
 
