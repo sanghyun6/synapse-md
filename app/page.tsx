@@ -29,6 +29,14 @@ interface WikiState {
   delta: number;
 }
 
+interface ApiWikiState {
+  run_count: number;
+  confidence: number;
+  skill_version: number;
+  skill_before: string;
+  skill_after: string;
+}
+
 // ---------------------------------------------------------------------------
 // Data
 // ---------------------------------------------------------------------------
@@ -202,12 +210,19 @@ const AGENTS = {
 // ---------------------------------------------------------------------------
 // Left Panel
 // ---------------------------------------------------------------------------
-function LeftPanel({ onSubmit, running, notes, setNotes }: {
+function LeftPanel({ onSubmit, running, notes, setNotes, wikiQuery, setWikiQuery, onQuery, queryRunning }: {
   onSubmit: () => void;
   running: boolean;
   notes: string;
   setNotes: (v: string) => void;
+  wikiQuery: string;
+  setWikiQuery: (v: string) => void;
+  onQuery: () => void;
+  queryRunning: boolean;
 }) {
+  const [patientName, setPatientName] = useState("K. Park");
+  const [patientAgeSex, setPatientAgeSex] = useState("58 / M");
+  const [patientVisit, setPatientVisit] = useState("Ophthalmology follow-up");
   const hasNotes = notes.trim().length > 20;
 
   return (
@@ -225,9 +240,9 @@ function LeftPanel({ onSubmit, running, notes, setNotes }: {
 
       <div className="case-meta">
         <div className="patient-row">
-          <div><div className="lbl">Patient</div><div className="val">K. Park</div></div>
-          <div><div className="lbl">Age / Sex</div><div className="val">58 / M</div></div>
-          <div><div className="lbl">Visit</div><div className="val dim">Ophthalmology follow-up</div></div>
+          <div><div className="lbl">Patient</div><input className="patient-input" value={patientName} onChange={e => setPatientName(e.target.value)} /></div>
+          <div><div className="lbl">Age / Sex</div><input className="patient-input" value={patientAgeSex} onChange={e => setPatientAgeSex(e.target.value)} /></div>
+          <div><div className="lbl">Visit</div><input className="patient-input dim" value={patientVisit} onChange={e => setPatientVisit(e.target.value)} /></div>
         </div>
       </div>
 
@@ -241,9 +256,9 @@ function LeftPanel({ onSubmit, running, notes, setNotes }: {
         />
         <div className="notes-toolbar">
           <span className="chip"><span className="dot" />parsed · 14 entities</span>
-          <span className="chip blue">drug: nitrofurantoin</span>
-          <span className="chip amber">finding: GGO bibasilar</span>
-          <span className="chip red">flag: eos 7%</span>
+          <span className="chip blue">drug: Metformin</span>
+          <span className="chip amber">finding: microaneurysms</span>
+          <span className="chip red">flag: HbA1c 10.1%</span>
           <span style={{ marginLeft: "auto" }} className="mono">{notes.length} ch</span>
         </div>
       </div>
@@ -260,6 +275,23 @@ function LeftPanel({ onSubmit, running, notes, setNotes }: {
             <>Run Multi-Agent Review<span className="kbd">⌘ ↵</span></>
           )}
         </button>
+        <div className="query-row">
+          <input
+            className="query-input"
+            value={wikiQuery}
+            onChange={e => setWikiQuery(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && onQuery()}
+            placeholder="Query the wiki... (e.g. ophthalmology referral criteria)"
+            disabled={queryRunning}
+          />
+          <button
+            className="query-btn"
+            onClick={onQuery}
+            disabled={!wikiQuery.trim() || queryRunning}
+          >
+            {queryRunning ? "…" : "Query Wiki"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -402,18 +434,21 @@ function ConfidenceRing({ value }: { value: number }) {
   );
 }
 
-function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, skillImproved }: {
+function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, skillImproved, wikiAnswer, apiWikiState }: {
   wikiState: WikiState;
   hasResult: boolean;
   wikiSummary: string;
   alertActive: boolean;
   runCount: number;
   skillImproved: boolean;
+  wikiAnswer: string;
+  apiWikiState: ApiWikiState | null;
 }) {
-  const conf = wikiState.confidence;
+  const conf = apiWikiState?.confidence ?? wikiState.confidence;
+  const version = apiWikiState ? 17 + apiWikiState.skill_version : wikiState.version;
   const barColor = conf >= 80 ? "var(--green)" : conf >= 60 ? "var(--amber)" : "var(--red)";
   const showSkillBadge = runCount >= 2;
-  const skillVersion = runCount;
+  const skillVersion = apiWikiState?.skill_version ?? runCount;
 
   return (
     <div className="col right">
@@ -422,7 +457,7 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
           <span className="tag">03</span>
           <span>Self-Evolving Wiki</span>
         </div>
-        <div className="col-actions mono">v{wikiState.version} · diff</div>
+        <div className="col-actions mono">v{version} · diff</div>
       </div>
 
       <div className="wiki-scroll">
@@ -448,7 +483,7 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
 
         <div className="wiki-card">
           <div className="wiki-banner">
-            <div className="name">Nitrofurantoin Pulmonary Toxicity</div>
+            <div className="name">Diabetic Retinopathy Risk Protocol</div>
           </div>
 
           {showSkillBadge && (
@@ -481,28 +516,18 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
             </div>
           </div>
 
-          {runCount > 0 && (
-            <div style={{
-              margin: "0 0 0",
-              padding: "10px 14px",
-              borderBottom: "1px solid var(--line)",
-              display: "flex",
-              flexDirection: "column" as const,
-              gap: 7,
-            }}>
-              <div style={{ fontSize: 10, color: "var(--ink-faint)", textTransform: "uppercase" as const, letterSpacing: "0.08em", marginBottom: 1 }}>Wiki Evolution</div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 11, color: "var(--ink-dim)" }}>Cases processed</span>
-                <span style={{ fontSize: 11, color: "var(--ink)", fontVariantNumeric: "tabular-nums" as const }}>{runCount} case{runCount !== 1 ? "s" : ""}</span>
+          {apiWikiState && apiWikiState.run_count > 0 && (
+            <div className="wiki-section">
+              <div className="h">
+                <span>Wiki Evolution</span>
+                <span className="badge">Run {apiWikiState.run_count} · Skill v{apiWikiState.skill_version}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 11, color: "var(--ink-dim)" }}>Skill version</span>
-                <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--blue)" }}>diabetic-retinopathy v{skillVersion}</span>
-              </div>
-              {skillImproved && (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 11, color: "var(--ink-dim)" }}>Last improved</span>
-                  <span style={{ fontSize: 11, color: "var(--green)" }}>just now</span>
+              {apiWikiState.skill_before && (
+                <div className="skill-diff">
+                  <div className="skill-diff-label before">BEFORE</div>
+                  <pre className="skill-diff-block before">{apiWikiState.skill_before.slice(0, 150)}&hellip;</pre>
+                  <div className="skill-diff-label after">AFTER</div>
+                  <pre className="skill-diff-block after">{apiWikiState.skill_after.slice(0, 150)}&hellip;</pre>
                 </div>
               )}
             </div>
@@ -516,19 +541,25 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
             <p>
               {wikiSummary || (
                 <>
-                  Subacute drug-induced interstitial lung disease typically presenting
-                  within <em>30 days</em> of nitrofurantoin initiation, characterized
-                  by bibasilar ground-glass opacities, restrictive PFTs with reduced
-                  <code> DLCO</code>, and frequent peripheral eosinophilia.
+                  Type 2 Diabetes patients with HbA1c &gt;9% and vision symptoms are
+                  at high risk for diabetic retinopathy. Annual ophthalmology referral
+                  is required per ADA 2024.
                 </>
               )}
             </p>
           </div>
 
+          {wikiAnswer && (
+            <div className="wiki-section wiki-answer">
+              <div className="h"><span>Wiki Answer</span></div>
+              <p>{wikiAnswer}</p>
+            </div>
+          )}
+
           {hasResult && (
             <div className="wiki-section">
               <div className="h">
-                <span>Delta · v{wikiState.version - 1} → v{wikiState.version}</span>
+                <span>Delta · v{version - 1} → v{version}</span>
                 <span className="badge">3 add · 2 mod · 1 rm</span>
               </div>
               {skillImproved && (
@@ -569,7 +600,7 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
         </div>
 
         <div className="footer-actions">
-          <button className="fbtn primary">Publish v{wikiState.version}</button>
+          <button className="fbtn primary">Publish v{version}</button>
         </div>
       </div>
     </div>
@@ -591,6 +622,10 @@ export default function App() {
   const [alertActive, setAlertActive] = useState(false);
   const [runCount, setRunCount] = useState(0);
   const [skillImproved, setSkillImproved] = useState(false);
+  const [wikiQuery, setWikiQuery] = useState("");
+  const [queryRunning, setQueryRunning] = useState(false);
+  const [wikiAnswer, setWikiAnswer] = useState("");
+  const [apiWikiState, setApiWikiState] = useState<ApiWikiState | null>(null);
   const runCountRef = useRef(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -598,6 +633,24 @@ export default function App() {
     timersRef.current.forEach(t => clearTimeout(t));
     timersRef.current = [];
   };
+
+  const queryWiki = useCallback(async () => {
+    if (!wikiQuery.trim() || queryRunning) return;
+    setQueryRunning(true);
+    setWikiAnswer("");
+    try {
+      const data = await fetch("http://localhost:8000/query-wiki", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: wikiQuery }),
+      }).then(r => r.json());
+      setWikiAnswer(data.answer ?? "");
+    } catch {
+      setWikiAnswer("Query failed — backend may be unavailable.");
+    } finally {
+      setQueryRunning(false);
+    }
+  }, [wikiQuery, queryRunning]);
 
   const submit = useCallback(async () => {
     if (running) return;
@@ -633,6 +686,12 @@ export default function App() {
           matched_cases:  analyzeData.matched_cases  ?? [],
         }),
       }).then(r => r.json());
+
+      // Fetch authoritative wiki state from backend
+      let fetchedWikiState: ApiWikiState | null = null;
+      try {
+        fetchedWikiState = await fetch("http://localhost:8000/wiki-state").then(r => r.json());
+      } catch { /* non-fatal */ }
 
       const connectorText   = debateData.connector?.analysis  ?? "";
       const skepticText     = debateData.skeptic?.analysis    ?? "";
@@ -687,6 +746,7 @@ export default function App() {
         setRunCount(newRunCount);
         runCountRef.current = newRunCount;
         setSkillImproved(isSkillImproved);
+        if (fetchedWikiState) setApiWikiState(fetchedWikiState);
       }, t + 200));
 
     } catch (err) {
@@ -713,9 +773,9 @@ export default function App() {
   return (
     <div className="app">
       <div className="main">
-        <LeftPanel onSubmit={submit} running={running} notes={notes} setNotes={setNotes} />
+        <LeftPanel onSubmit={submit} running={running} notes={notes} setNotes={setNotes} wikiQuery={wikiQuery} setWikiQuery={setWikiQuery} onQuery={queryWiki} queryRunning={queryRunning} />
         <CenterPanel messages={messages} streaming={streaming} running={running} activeAgent={activeAgent} />
-        <RightPanel wikiState={wikiState} hasResult={hasResult} wikiSummary={wikiSummary} alertActive={alertActive} runCount={runCount} skillImproved={skillImproved} />
+        <RightPanel wikiState={wikiState} hasResult={hasResult} wikiSummary={wikiSummary} alertActive={alertActive} runCount={runCount} skillImproved={skillImproved} wikiAnswer={wikiAnswer} apiWikiState={apiWikiState} />
       </div>
     </div>
   );

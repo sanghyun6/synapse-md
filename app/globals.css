@@ -174,6 +174,13 @@ body {
 .patient-row .lbl { color: var(--ink-faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; }
 .patient-row .val { color: var(--ink); font-weight: 500; }
 .patient-row .val.dim { color: var(--ink-mute); font-weight: 400; }
+.patient-input {
+  background: transparent; border: none; outline: none;
+  color: var(--ink); font-weight: 500; font-size: 12px;
+  font-family: inherit; padding: 0; width: 100%; min-width: 0;
+}
+.patient-input.dim { color: var(--ink-mute); font-weight: 400; }
+.patient-input::placeholder { color: var(--ink-faint); }
 
 .notes-wrap {
   flex: 1; min-height: 0;
@@ -673,6 +680,60 @@ body {
   border-color: var(--blue-line); color: #fff; font-weight: 500;
 }
 .fbtn:hover { border-color: var(--line); }
+
+.query-row {
+  display: flex; gap: 8px; align-items: center;
+}
+.query-input {
+  flex: 1; height: 34px;
+  background: #0B1117; border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink); padding: 0 10px;
+  font-family: "JetBrains Mono", monospace; font-size: 11.5px;
+  outline: none;
+}
+.query-input:focus { border-color: var(--blue-line); box-shadow: 0 0 0 3px oklch(0.5 0.12 245 / 0.12); }
+.query-input::placeholder { color: var(--ink-faint); }
+.query-btn {
+  height: 34px; padding: 0 12px; border-radius: 7px;
+  border: 1px solid var(--line-2); background: #0E141B; color: var(--ink-mute);
+  font-size: 11.5px; cursor: pointer; white-space: nowrap;
+}
+.query-btn:hover:not(:disabled) { color: var(--ink); border-color: var(--line); }
+.query-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.wiki-answer {
+  background: oklch(0.3 0.08 245 / 0.08);
+  border-left: 2px solid var(--blue);
+}
+
+.skill-diff { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+.skill-diff-label {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9.5px; letter-spacing: 0.1em;
+  font-weight: 600; padding: 2px 0;
+}
+.skill-diff-label.before { color: var(--ink-faint); }
+.skill-diff-label.after  { color: var(--green); margin-top: 6px; }
+.skill-diff-block {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+  overflow: hidden;
+}
+.skill-diff-block.before {
+  background: #0A0F15;
+  border: 1px solid var(--line);
+  color: var(--ink-dim);
+}
+.skill-diff-block.after {
+  background: oklch(0.25 0.07 155 / 0.18);
+  border: 1px solid oklch(0.5 0.1 155 / 0.35);
+  color: var(--green);
+}
 
 @media (max-width: 1180px) {
   .main { grid-template-columns: 320px 1fr 380px; }

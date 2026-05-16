@@ -39,6 +39,27 @@ class DebateRequest(BaseModel):
     matched_cases: list[dict] = []
 
 
+class QueryRequest(BaseModel):
+    question: str
+
+
+_SKILL_PATH = Path("my_skills/diabetic-retinopathy/SKILL.md")
+
+wiki_state: dict = {
+    "run_count": 0,
+    "confidence": 64,
+    "confidence_history": [],
+    "skill_version": 1,
+    "baseline_skill": "",
+    "current_skill": "",
+}
+
+
+@app.get("/wiki-state")
+def get_wiki_state():
+    return wiki_state
+
+
 def tokenize(text: str) -> set[str]:
     return set(re.sub(r"[^\w\s]", " ", text).lower().split())
 
@@ -124,6 +145,24 @@ async def analyze(req: AnalyzeRequest):
         "cognee_results": cognee_results,
         "status": status,
     }
+
+
+@app.post("/query-wiki")
+async def query_wiki(req: QueryRequest):
+    try:
+        results = await cognee.recall(req.question, session_id="demo-session")
+        texts = [
+            getattr(r, "text", None) or getattr(r, "answer", None)
+            for r in results
+            if getattr(r, "text", None) or getattr(r, "answer", None)
+        ]
+        if texts:
+            answer = " ".join(texts)
+        else:
+            answer = "No relevant entries found yet. Run a multi-agent review first to populate the knowledge graph."
+    except Exception:
+        answer = "Wiki query unavailable. Run a multi-agent review first to build the knowledge graph."
+    return {"answer": answer}
 
 
 AGENT_PROMPTS = {
@@ -223,9 +262,14 @@ async def debate(req: DebateRequest):
         score = 0.3 if linter_alert_val else 0.9
         skill_score = score
 
+        # Snapshot skill before improvement
         try:
-            skill_path = Path("my_skills/diabetic-retinopathy/SKILL.md")
-            current_skill = skill_path.read_text()
+            wiki_state["baseline_skill"] = _SKILL_PATH.read_text()
+        except Exception:
+            wiki_state["baseline_skill"] = ""
+
+        try:
+            current_skill = wiki_state["baseline_skill"] or _SKILL_PATH.read_text()
 
             improve_prompt = (
                 "You are improving a medical AI skill definition based on a recent case.\n\n"
@@ -246,10 +290,22 @@ async def debate(req: DebateRequest):
                 messages=[{"role": "user", "content": improve_prompt}],
             )
             new_skill_text = improve_resp.choices[0].message.content.strip()
-            skill_path.write_text(new_skill_text)
+            _SKILL_PATH.write_text(new_skill_text)
             skill_improved = True
         except Exception:
             pass
+
+        # Update cumulative wiki state
+        wiki_state["run_count"] += 1
+        skeptic_confidence = int(skeptic_out.get("confidence", 50))
+        wiki_state["confidence_history"].append(skeptic_confidence)
+        wiki_state["confidence"] = round(sum(wiki_state["confidence_history"]) / len(wiki_state["confidence_history"]))
+        if skill_improved:
+            wiki_state["skill_version"] += 1
+        try:
+            wiki_state["current_skill"] = _SKILL_PATH.read_text()
+        except Exception:
+            wiki_state["current_skill"] = ""
 
         return {
             "connector":     {"analysis": connector_out},
@@ -258,6 +314,14 @@ async def debate(req: DebateRequest):
             "wiki_updated":  True,
             "skill_improved": skill_improved,
             "skill_score":   skill_score,
+            "wiki_state": {
+                "run_count":          wiki_state["run_count"],
+                "confidence":         wiki_state["confidence"],
+                "confidence_history": wiki_state["confidence_history"],
+                "skill_version":      wiki_state["skill_version"],
+                "skill_before":       wiki_state["baseline_skill"][:200],
+                "skill_after":        wiki_state["current_skill"][:200],
+            },
             "status":        "complete",
         }
 
