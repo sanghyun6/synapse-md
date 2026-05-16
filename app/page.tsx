@@ -40,12 +40,7 @@ interface ApiWikiState {
 // ---------------------------------------------------------------------------
 // Data
 // ---------------------------------------------------------------------------
-const SAMPLE_NOTES = `CC: 58M, 10-year history of Type 2 Diabetes presents with sudden blurring of vision and floaters in left eye.
-HbA1c: 10.1%. No prior ophthalmology referral in chart.
-PMH: Type 2 Diabetes diagnosed 2014, hypertension.
-Meds: Metformin 1000mg BID, Lisinopril 10mg.
-Vitals: BP 142/88, HR 78, SpO2 98%.
-Exam: Visual acuity reduced left eye. Fundoscopy: microaneurysms noted.`;
+const SAMPLE_NOTES = ``;
 
 const DEBATE: DebateItem[] = [
   { phase: "ROUND 1 · INITIAL CLAIMS" },
@@ -210,19 +205,24 @@ const AGENTS = {
 // ---------------------------------------------------------------------------
 // Left Panel
 // ---------------------------------------------------------------------------
-function LeftPanel({ onSubmit, running, notes, setNotes, wikiQuery, setWikiQuery, onQuery, queryRunning }: {
+const DEPARTMENTS = ["Internal Medicine", "Cardiology", "Ophthalmology", "Neurology", "General"] as const;
+type Department = typeof DEPARTMENTS[number];
+
+function LeftPanel({ onSubmit, running, notes, setNotes, department, setDepartment, wikiQuery, setWikiQuery, onQuery, queryRunning }: {
   onSubmit: () => void;
   running: boolean;
   notes: string;
   setNotes: (v: string) => void;
+  department: Department;
+  setDepartment: (v: Department) => void;
   wikiQuery: string;
   setWikiQuery: (v: string) => void;
   onQuery: () => void;
   queryRunning: boolean;
 }) {
-  const [patientName, setPatientName] = useState("K. Park");
-  const [patientAgeSex, setPatientAgeSex] = useState("58 / M");
-  const [patientVisit, setPatientVisit] = useState("Ophthalmology follow-up");
+  const [patientName, setPatientName] = useState("");
+  const [patientAgeSex, setPatientAgeSex] = useState("");
+  const [patientVisit, setPatientVisit] = useState("");
   const hasNotes = notes.trim().length > 20;
 
   return (
@@ -246,12 +246,29 @@ function LeftPanel({ onSubmit, running, notes, setNotes, wikiQuery, setWikiQuery
         </div>
       </div>
 
+      <div style={{ padding: "8px 14px 0" }}>
+        <div className="lbl" style={{ marginBottom: 4 }}>Department</div>
+        <select
+          value={department}
+          onChange={e => setDepartment(e.target.value as Department)}
+          style={{
+            width: "100%", height: 32,
+            background: "#0B1117", border: "1px solid var(--line)",
+            borderRadius: 7, color: "var(--ink)",
+            padding: "0 10px", fontSize: 12,
+            fontFamily: "inherit", cursor: "pointer", outline: "none",
+          }}
+        >
+          {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+      </div>
+
       <div className="notes-wrap">
         <textarea
           className="notes-area"
           value={notes}
           onChange={e => setNotes(e.target.value)}
-          placeholder="Paste or dictate clinical notes — HPI, exam, labs, imaging, meds…"
+          placeholder="Enter clinical notes..."
           spellCheck={false}
         />
         <div className="notes-toolbar">
@@ -643,6 +660,7 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
 // ---------------------------------------------------------------------------
 export default function App() {
   const [notes, setNotes] = useState(SAMPLE_NOTES);
+  const [department, setDepartment] = useState<Department>("Internal Medicine");
   const [messages, setMessages] = useState<DebateItem[]>([]);
   const [running, setRunning] = useState(false);
   const [streaming, setStreaming] = useState(false);
@@ -719,7 +737,7 @@ export default function App() {
       const analyzeData = await fetch("http://localhost:8000/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes }),
+        body: JSON.stringify({ notes, department }),
       }).then(r => r.json());
 
       console.log("[entities]", analyzeData.entities_found);
@@ -733,6 +751,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           notes,
+          department,
           cognee_results: analyzeData.cognee_results ?? [],
           matched_cases:  analyzeData.matched_cases  ?? [],
         }),
@@ -806,7 +825,7 @@ export default function App() {
       setStreaming(false);
       setActiveAgent(null);
     }
-  }, [running, notes]);
+  }, [running, notes, department]);
 
   useEffect(() => () => clearTimers(), []);
 
@@ -824,7 +843,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="main">
-        <LeftPanel onSubmit={submit} running={running} notes={notes} setNotes={setNotes} wikiQuery={wikiQuery} setWikiQuery={setWikiQuery} onQuery={queryWiki} queryRunning={queryRunning} />
+        <LeftPanel onSubmit={submit} running={running} notes={notes} setNotes={setNotes} department={department} setDepartment={setDepartment} wikiQuery={wikiQuery} setWikiQuery={setWikiQuery} onQuery={queryWiki} queryRunning={queryRunning} />
         <CenterPanel messages={messages} streaming={streaming} running={running} activeAgent={activeAgent} />
         <RightPanel wikiState={wikiState} hasResult={hasResult} wikiSummary={wikiSummary} alertActive={alertActive} runCount={runCount} skillImproved={skillImproved} wikiAnswer={wikiAnswer} apiWikiState={apiWikiState} onPublish={handlePublish} publishState={publishState} toast={toast} />
       </div>

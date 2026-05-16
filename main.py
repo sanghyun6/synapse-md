@@ -31,10 +31,12 @@ cognee.config.set_llm_model("gpt-4o-mini")
 
 class AnalyzeRequest(BaseModel):
     notes: str
+    department: str = "General"
 
 
 class DebateRequest(BaseModel):
     notes: str
+    department: str = "General"
     cognee_results: list[str] = []
     matched_cases: list[dict] = []
 
@@ -125,7 +127,7 @@ async def analyze(req: AnalyzeRequest):
     try:
         await cognee.remember(req.notes, dataset_name="medical-wiki")
         await cognee.remember(
-            req.notes,
+            f"Department: {req.department}\n{req.notes}",
             dataset_name="medical-wiki",
             session_id="demo-session",
         )
@@ -211,13 +213,18 @@ async def query_wiki(req: QueryRequest):
     return {"answer": answer}
 
 
-AGENT_PROMPTS = {
-    "connector": (
+def connector_prompt(department: str) -> str:
+    return (
         "You are the Connector agent in a medical AI system. "
         "Your job is to find hidden cross-department patterns in patient data. "
-        "Given the clinical notes and related cases, identify causal connections "
-        "between different departments. Be specific and concise. Max 3 sentences."
-    ),
+        f"The patient is currently in {department}. "
+        "Check their records from other departments for dangerous conflicts. "
+        "Identify causal connections between departments. Be specific and concise. Max 3 sentences."
+    )
+
+AGENT_PROMPTS = {
+    "connector": "",  # replaced per-request via connector_prompt()
+
     "skeptic": (
         "You are the Skeptic agent in a medical AI system. "
         "Your job is to challenge the Connector's analysis and find weaknesses, "
@@ -275,7 +282,9 @@ async def debate(req: DebateRequest):
         client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
         # Round 1 — Connector
+        AGENT_PROMPTS["connector"] = connector_prompt(req.department)
         connector_input = (
+            f"Department: {req.department}\n"
             f"Clinical notes: {req.notes}\n"
             f"Related cases: {req.matched_cases}\n"
             f"Cognee knowledge: {knowledge}"
