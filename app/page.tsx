@@ -432,7 +432,7 @@ function CenterPanel({ messages, streaming, running, activeAgent }: {
 // ---------------------------------------------------------------------------
 // Right Panel
 // ---------------------------------------------------------------------------
-function ConfidenceRing({ value }: { value: number }) {
+function ConfidenceRing({ value, empty }: { value: number; empty?: boolean }) {
   const r = 36, c = 2 * Math.PI * r;
   const off = c * (1 - value / 100);
   const color = value >= 80 ? "var(--green)" : value >= 60 ? "var(--amber)" : "var(--red)";
@@ -440,22 +440,25 @@ function ConfidenceRing({ value }: { value: number }) {
     <div className="ring">
       <svg viewBox="0 0 88 88">
         <circle className="bg" cx="44" cy="44" r={r} />
-        <circle className="fg" cx="44" cy="44" r={r}
-          style={{ stroke: color, strokeDasharray: c, strokeDashoffset: off }} />
+        {!empty && (
+          <circle className="fg" cx="44" cy="44" r={r}
+            style={{ stroke: color, strokeDasharray: c, strokeDashoffset: off }} />
+        )}
       </svg>
-      <div className="num" style={{ color }}>
-        <div className="v">{Math.round(value)}</div>
+      <div className="num" style={{ color: empty ? "var(--ink-faint)" : color }}>
+        <div className="v">{empty ? "—" : Math.round(value)}</div>
         <div className="pct">% CONFIDENCE</div>
       </div>
     </div>
   );
 }
 
-function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, skillImproved, wikiAnswer, apiWikiState, onPublish, publishState, toast }: {
+function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, linterAnalysis, runCount, skillImproved, wikiAnswer, apiWikiState, onPublish, publishState, toast }: {
   wikiState: WikiState;
   hasResult: boolean;
   wikiSummary: string;
   alertActive: boolean;
+  linterAnalysis: string;
   runCount: number;
   skillImproved: boolean;
   wikiAnswer: string;
@@ -477,7 +480,7 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
           <span className="tag">03</span>
           <span>Self-Evolving Wiki</span>
         </div>
-        <div className="col-actions mono">v{version} · diff</div>
+        <div className="col-actions mono">{hasResult ? `v${version} · diff` : "—"}</div>
       </div>
 
       <div className="wiki-scroll">
@@ -489,10 +492,7 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
               <span className="warn-tag">SEV-2</span>
             </div>
             <div className="warn-body">
-              <strong>Drug-attribution conflict detected.</strong> Patient is on{" "}
-              <code>lisinopril 20mg</code> — ACE-inhibitor cough may confound
-              &ldquo;dry cough&rdquo; attribution to nitrofurantoin. Linter flagged this
-              before locking the wiki delta.
+              {linterAnalysis}
               <div className="warn-actions">
                 <button className="warn-btn">Review &amp; resolve</button>
                 <button className="warn-btn ghost">Snooze 24h</button>
@@ -503,7 +503,7 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
 
         <div className="wiki-card">
           <div className="wiki-banner">
-            <div className="name">Diabetic Retinopathy Risk Protocol</div>
+            <div className="name">Drug Interaction Protocol</div>
           </div>
 
           {showSkillBadge && (
@@ -529,10 +529,12 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
           )}
 
           <div className="conf-wrap">
-            <ConfidenceRing value={conf} />
+            <ConfidenceRing value={conf} empty={!hasResult} />
             <div className="conf-meta">
               <div className="lbl">Consensus confidence</div>
-              <div className="bar"><div style={{ width: `${conf}%`, background: barColor }} /></div>
+              {hasResult && (
+                <div className="bar"><div style={{ width: `${conf}%`, background: barColor }} /></div>
+              )}
             </div>
           </div>
 
@@ -559,13 +561,10 @@ function RightPanel({ wikiState, hasResult, wikiSummary, alertActive, runCount, 
               {hasResult && <span className="badge">+8% specificity</span>}
             </div>
             <p>
-              {wikiSummary || (
-                <>
-                  Type 2 Diabetes patients with HbA1c &gt;9% and vision symptoms are
-                  at high risk for diabetic retinopathy. Annual ophthalmology referral
-                  is required per ADA 2024.
-                </>
-              )}
+              {hasResult
+                ? wikiSummary
+                : <span style={{ color: "var(--ink-faint)" }}>Submit clinical notes to begin.</span>
+              }
             </p>
           </div>
 
@@ -669,6 +668,7 @@ export default function App() {
   const [hasResult, setHasResult] = useState(false);
   const [wikiSummary, setWikiSummary] = useState("");
   const [alertActive, setAlertActive] = useState(false);
+  const [linterAnalysis, setLinterAnalysis] = useState("");
   const [runCount, setRunCount] = useState(0);
   const [skillImproved, setSkillImproved] = useState(false);
   const [wikiQuery, setWikiQuery] = useState("");
@@ -731,6 +731,7 @@ export default function App() {
     setWikiState({ version: 18, confidence: 64, delta: 0 });
     setWikiSummary("");
     setAlertActive(false);
+    setLinterAnalysis("");
 
     try {
       // Step 1 — /analyze
@@ -812,6 +813,7 @@ export default function App() {
         setHasResult(true);
         setWikiSummary(displaySummary);
         setAlertActive(linterAlert);
+        setLinterAnalysis(linterText);
         setWikiState({ version: 17 + newRunCount, confidence: effectiveConf, delta: effectiveConf - 64 });
         setRunCount(newRunCount);
         runCountRef.current = newRunCount;
@@ -845,7 +847,7 @@ export default function App() {
       <div className="main">
         <LeftPanel onSubmit={submit} running={running} notes={notes} setNotes={setNotes} department={department} setDepartment={setDepartment} wikiQuery={wikiQuery} setWikiQuery={setWikiQuery} onQuery={queryWiki} queryRunning={queryRunning} />
         <CenterPanel messages={messages} streaming={streaming} running={running} activeAgent={activeAgent} />
-        <RightPanel wikiState={wikiState} hasResult={hasResult} wikiSummary={wikiSummary} alertActive={alertActive} runCount={runCount} skillImproved={skillImproved} wikiAnswer={wikiAnswer} apiWikiState={apiWikiState} onPublish={handlePublish} publishState={publishState} toast={toast} />
+        <RightPanel wikiState={wikiState} hasResult={hasResult} wikiSummary={wikiSummary} alertActive={alertActive} linterAnalysis={linterAnalysis} runCount={runCount} skillImproved={skillImproved} wikiAnswer={wikiAnswer} apiWikiState={apiWikiState} onPublish={handlePublish} publishState={publishState} toast={toast} />
       </div>
     </div>
   );

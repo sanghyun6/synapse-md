@@ -18,9 +18,10 @@ app = FastAPI(title="Synapse MD API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3001"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
 
 cases: list[dict] = json.loads(Path("cases.json").read_text())
@@ -55,6 +56,21 @@ wiki_state: dict = {
     "baseline_skill": "",
     "current_skill": "",
 }
+
+
+@app.get("/reset")
+async def reset():
+    await cognee.prune.prune_data()
+    wiki_state.clear()
+    wiki_state.update({
+        "run_count": 0,
+        "confidence": 64,
+        "confidence_history": [],
+        "skill_version": 1,
+        "baseline_skill": "",
+        "current_skill": "",
+    })
+    return {"reset": True}
 
 
 @app.get("/wiki-state")
